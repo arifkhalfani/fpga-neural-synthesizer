@@ -1,5 +1,5 @@
 # fpga-neural-synthesizer
-FPGA Polyphonic Synthesizer with Neural Melody Generator
+FPGA Polyphonic Synthesizer with Neural Melody Generator (in progress)
 
 Base Wavetable Synthesizer (Lab 4) 
 - Designed a master control unit state machine to handle interactive play, pause, and skip logic via button inputs.
