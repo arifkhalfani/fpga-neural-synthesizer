@@ -29,7 +29,7 @@ module lab5_top(
     output wire [2:0] leds_rgb_0,
     output wire [2:0] leds_rgb_1,
 
-    input [2:0] btn,
+    input [3:0] btn,
 
     /* 
     //VGA OUTPUT 
@@ -49,8 +49,8 @@ module lab5_top(
   
 );  
 
-    wire reset, play_button, next_button;
-    assign {reset, play_button, next_button} = btn;
+    wire reset, play_button, next_button, mode_button;
+    assign {reset, play_button, next_button, mode_button} = btn;
 
     // Clock converter
     wire clk_100, display_clk, serial_clk;
@@ -109,6 +109,14 @@ module lab5_top(
         .reset(reset),
         .in(next_button),
         .out(next)
+    );
+    
+    wire mode;
+    button_press_unit #(.WIDTH(BPU_WIDTH)) mode_button_press_unit(
+        .clk(clk_100),
+        .reset(reset),
+        .in(mode_button),
+        .out(mode)
     );
        
 //   

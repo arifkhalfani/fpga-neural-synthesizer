@@ -1,6 +1,7 @@
-`define SONG_WIDTH 5
+`define SONG_WIDTH 7
 `define NOTE_WIDTH 6
 `define DURATION_WIDTH 6
+`define HARMONIC_WIDTH 3
 
 // ----------------------------------------------
 // Define State Assignments
@@ -18,11 +19,32 @@ module song_reader(
     input reset,
     input play,
     input [1:0] song,
-    input note_done,
-    output wire song_done,
-    output wire [5:0] note,
-    output wire [5:0] duration,
-    output wire new_note
+    input [1:0] mode,
+    output wire song_done, 
+    
+    input note_done_0,  
+    output wire [5:0] note_0,       
+    output wire [5:0] duration_0,
+    output wire [1:0]  harmonic_0,   
+    output wire new_note_0,
+    
+    input note_done_1,   
+    output wire [5:0] note_1,       
+    output wire [5:0] duration_1,
+    output wire [1:0]  harmonic_1,   
+    output wire new_note_1,  
+    
+    input note_done_2, 
+    output wire [5:0] note_2,       
+    output wire [5:0] duration_2,
+    output wire [1:0]  harmonic_2,   
+    output wire new_note_2,  
+    
+    input note_done_3,
+    output wire [5:0] note_3,       
+    output wire [5:0] duration_3,
+    output wire [1:0]  harmonic_3,   
+    output wire new_note_3
 );
     wire [`SONG_WIDTH-1:0] curr_note_num, next_note_num;
     wire [`NOTE_WIDTH + `DURATION_WIDTH -1:0] note_and_duration;
