@@ -1,6 +1,7 @@
 module note_player(
     input clk,
     input reset,
+    input [1:0] mode,
     input play_enable,  // When high we play, when low we don't.
     input [5:0] note_to_load,  // The note to play
     input [5:0] duration_to_load,  // The duration of the note to play

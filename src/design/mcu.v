@@ -50,7 +50,7 @@ module mcu(
     );
 
     assign play = (play_state == `PLAY);
-    assign reset_player = next_button || song_done;
+    assign reset_player = next_button || mode_button || song_done;
     
     assign mode = mode_state;
 
