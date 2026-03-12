@@ -4,6 +4,7 @@
 `define HARMONIC_WIDTH      3
 `define INSTRUCTION_WIDTH   16
 `define NUM_NOTE_PLAYERS    4
+`define MAX_NOTE_IN_SONG    7'd127
 
 // ----------------------------------------------
 // Define State Assignments
@@ -15,6 +16,12 @@
 `define WAIT                3'b011
 `define INCREMENT_ADDRESS   3'b100
 
+// Mode definitions
+`define MODE_WIDTH 2
+`define NORMAL 2'b00
+`define REWIND 2'b01
+`define FAST_FORWARD 2'b11
+`define GENERATE 2'b10
 
 module song_reader(
     input clk,
@@ -49,6 +56,10 @@ module song_reader(
     output wire [2:0]  harmonic_3,   
     output wire new_note_3
 );
+
+    // Only use this module when mode is not GENERATE, else use generate_reader
+    wire play_enable = play & (mode != `GENERATE);
+
     wire [`SWIDTH-1:0] state;
     reg  [`SWIDTH-1:0] next_state;
     
@@ -67,9 +78,9 @@ module song_reader(
     wire overflow;
     wire underflow;     // Case for rewind
     
-    dffr #(`SONG_WIDTH) note_counter (
+    dffr #(.WIDTH(`SONG_WIDTH)) note_counter (
         .clk(clk),
-        .r(reset | overflow | underflow),
+        .r(reset),
         .d(next_note_num),
         .q(curr_note_num)
     );
@@ -97,7 +108,7 @@ module song_reader(
         else                      sel_current = 4'b0000; // All busy, drop the note.
     end
         
-    dffre #(`NUM_NOTE_PLAYERS) in_queue_ff (
+    dffre #(.WIDTH(`NUM_NOTE_PLAYERS)) in_queue_ff (
         .clk(clk),
         .r(reset | opcode),    // "flush" when opcode = 1
         .en(!opcode & (state == `DECODE)),          // store values when opcode = 0
@@ -106,28 +117,28 @@ module song_reader(
     );
     
     // Queue the notes to the players
-    dffre #(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH) note_player_0_ff (
+    dffre #(.WIDTH(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH)) note_player_0_ff (
         .clk(clk),
         .r(reset),    
         .en(sel_current[0] & !opcode & (state == `DECODE)),
         .d({note, duration, harmonic}),
         .q({note_0, duration_0, harmonic_0})
     );
-    dffre #(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH) note_player_1_ff (
+    dffre #(.WIDTH(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH)) note_player_1_ff (
         .clk(clk),
         .r(reset),    
         .en(sel_current[1] & !opcode & (state == `DECODE)),
         .d({note, duration, harmonic}),
         .q({note_1, duration_1, harmonic_1})
     );
-    dffre #(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH) note_player_2_ff (
+    dffre #(.WIDTH(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH)) note_player_2_ff (
         .clk(clk),
         .r(reset),    
         .en(sel_current[2] & !opcode & (state == `DECODE)),
         .d({note, duration, harmonic}),
         .q({note_2, duration_2, harmonic_2})
     );
-    dffre #(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH) note_player_3_ff (
+    dffre #(.WIDTH(`NOTE_WIDTH + `DURATION_WIDTH + `HARMONIC_WIDTH)) note_player_3_ff (
         .clk(clk),
         .r(reset),    
         .en(sel_current[3] & !opcode & (state == `DECODE)),
@@ -135,15 +146,15 @@ module song_reader(
         .q({note_3, duration_3, harmonic_3})
     );
     
-    assign new_note_0 = (opcode & (state == `DECODE)) ? (sel_current[0] | in_queue[0]) : 0;
-    assign new_note_1 = (opcode & (state == `DECODE)) ? (sel_current[1] | in_queue[1]) : 0;
-    assign new_note_2 = (opcode & (state == `DECODE)) ? (sel_current[2] | in_queue[2]) : 0;
-    assign new_note_3 = (opcode & (state == `DECODE)) ? (sel_current[3] | in_queue[3]) : 0;
+    assign new_note_0 = (opcode & (state == `DECODE)) ? in_queue[0] : 0;
+    assign new_note_1 = (opcode & (state == `DECODE)) ? in_queue[1] : 0;
+    assign new_note_2 = (opcode & (state == `DECODE)) ? in_queue[2] : 0;
+    assign new_note_3 = (opcode & (state == `DECODE)) ? in_queue[3] : 0;
  
     // wait_counter to advance time in state WAIT
     wire [`DURATION_WIDTH-1:0] wait_counter, next_wait_counter;
     
-    dffre #(`DURATION_WIDTH) wait_counter_ff (
+    dffre #(.WIDTH(`DURATION_WIDTH)) wait_counter_ff (
         .clk(clk),
         .r(reset),
         .en((state == `DECODE && opcode) || (beat && state == `WAIT)),
@@ -155,23 +166,25 @@ module song_reader(
 
     always @(*) begin
         case (state)
-            `PAUSED : next_state = play ? `FETCH : `PAUSED;
-            `FETCH  : next_state = play ? `DECODE : `PAUSED;
-            `DECODE : next_state = !play ? `PAUSED :
+            `PAUSED : next_state = play_enable ? `FETCH : `PAUSED;
+            `FETCH  : next_state = play_enable ? `DECODE : `PAUSED;
+            `DECODE : next_state = !play_enable ? `PAUSED :
                                    opcode ? `WAIT : `INCREMENT_ADDRESS;
-            `WAIT : next_state = !play ? `PAUSED :
-                                 (wait_counter == 6'b0) ? `INCREMENT_ADDRESS : `WAIT;
-            `INCREMENT_ADDRESS : next_state = play ? `FETCH : `PAUSED;                                                       
+            `WAIT : next_state = !play_enable ? `PAUSED :
+                                 (wait_counter == 6'b0 && beat) ? `INCREMENT_ADDRESS : `WAIT;
+            `INCREMENT_ADDRESS : next_state = play_enable ? `FETCH : `PAUSED;                                                       
             default : next_state = `PAUSED;
         endcase
     end
-
-    assign next_note_num = (state != `INCREMENT_ADDRESS) ? curr_note_num     :
-                           (mode != `REWIND)             ? curr_note_num + 1 :
-                                                           curr_note_num - 1;
                                                            
-    assign overflow = (mode != `REWIND) & (state == `INCREMENT_ADDRESS) & (next_note_num == 7'b0);
+    assign overflow = (mode != `REWIND) & (state == `INCREMENT_ADDRESS) & (curr_note_num == `MAX_NOTE_IN_SONG);
     assign underflow = (mode == `REWIND) & (state == `INCREMENT_ADDRESS) & (curr_note_num == 7'b0);                                                     
     assign song_done = overflow || underflow;
+    
+    assign next_note_num = (state != `INCREMENT_ADDRESS) ? curr_note_num     :
+                           overflow                      ? 7'b0              :
+                           underflow                     ? `MAX_NOTE_IN_SONG :   
+                           (mode != `REWIND)             ? curr_note_num + 1 :
+                                                           curr_note_num - 1;
 
 endmodule

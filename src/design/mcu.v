@@ -2,6 +2,7 @@
 `define PAUSE 1'b0
 `define PLAY 1'b1
 
+// Mode definitions
 `define MODE_WIDTH 2
 `define NORMAL 2'b00
 `define REWIND 2'b01
@@ -20,14 +21,6 @@ module mcu(
     output [1:0] mode,
     input song_done
 );
-
-    dffre #(.WIDTH(2)) song_reg (
-        .clk(clk),
-        .r(reset),
-        .en(next_button || song_done),
-        .d(song + 1'b1),
-        .q(song)
-    );
 
     wire play_state;
     reg  next_play_state;
@@ -50,7 +43,7 @@ module mcu(
     );
 
     assign play = (play_state == `PLAY);
-    assign reset_player = next_button || mode_button || song_done;
+    assign reset_player = next_button || song_done;
     
     assign mode = mode_state;
 
@@ -58,7 +51,7 @@ module mcu(
         case (play_state)
             `PAUSE:  next_play_state = play_button ? `PLAY : play_state;
             `PLAY:   next_play_state =
-                (play_button || next_button || song_done) ? `PAUSE : play_state;
+                (play_button || next_button || mode_button || song_done) ? `PAUSE : play_state;
             default: next_play_state = `PAUSE;
         endcase
         
@@ -70,5 +63,19 @@ module mcu(
             default: next_mode_state = `NORMAL;
         endcase
     end
+    
+    // song control: if in REWIND, the next song to be played is the previous one
+    wire [1:0] next_song;
+    
+    dffr #(.WIDTH(2)) song_reg (
+        .clk(clk),
+        .r(reset),
+        .d(next_song),
+        .q(song)
+    );
+    
+    assign next_song = (next_button | song_done) ? 
+                            ((mode == `REWIND) ? song - 2'b01 : song + 2'b01) :
+                            song;
 
 endmodule
