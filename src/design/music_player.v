@@ -1,7 +1,7 @@
 //
 //  music_player module
 //
-//  This music_player module connects up the MCU, song_reader, note_player,
+//  This music_player module connects up the MCU, song_reader, 4x note_players,
 //  beat_generator, and codec_conditioner. It provides an output that indicates
 //  a new sample (new_sample_generated) which will be used in lab 5.
 //
@@ -14,6 +14,7 @@ module music_player(
     // Our debounced and one-pulsed button inputs.
     input play_button,
     input next_button,
+    input mode_button,
 
     // The raw new_frame signal from the ac97_if codec.
     input new_frame,
@@ -43,14 +44,19 @@ module music_player(
     wire reset_player;
     wire [1:0] current_song;
     wire song_done;
+    
+    wire [1:0] mode; 
+    
     mcu mcu(
         .clk(clk),
         .reset(reset),
         .play_button(play_button),
         .next_button(next_button),
+        .mode_button(mode_button),
         .play(play),
         .reset_player(reset_player),
         .song(current_song),
+        .mode(mode),
         .song_done(song_done)
     );
 
@@ -59,50 +65,81 @@ module music_player(
 //      Song Reader
 //  ****************************************************************************
 //
-    wire [5:0] note_to_play;
-    wire [5:0] duration_for_note;
-    wire new_note;
-    wire note_done;
+    wire [5:0] note_0, note_1, note_2, note_3;
+    wire [5:0] duration_0, duration_1, duration_2, duration_3;
+    wire [2:0] harmonic_0, harmonic_1, harmonic_2, harmonic_3;
+    wire new_note_0, new_note_1, new_note_2, new_note_3;
+    wire note_done_0, note_done_1, note_done_2, note_done_3;
+    
+    wire beat;
+
     song_reader song_reader(
         .clk(clk),
         .reset(reset | reset_player),
         .play(play),
+        .beat(beat),
         .song(current_song),
+        .mode(mode),
         .song_done(song_done),
-        .note(note_to_play),
-        .duration(duration_for_note),
-        .new_note(new_note),
-        .note_done(note_done)
+        
+        .note_done_0(note_done_0), .note_0(note_0), .duration_0(duration_0), .harmonic_0(harmonic_0), .new_note_0(new_note_0),
+        .note_done_1(note_done_1), .note_1(note_1), .duration_1(duration_1), .harmonic_1(harmonic_1), .new_note_1(new_note_1),
+        .note_done_2(note_done_2), .note_2(note_2), .duration_2(duration_2), .harmonic_2(harmonic_2), .new_note_2(new_note_2),
+        .note_done_3(note_done_3), .note_3(note_3), .duration_3(duration_3), .harmonic_3(harmonic_3), .new_note_3(new_note_3)
     );
 
 //   
 //  ****************************************************************************
-//      Note Player
+//      Note Players (x4 for Polyphony)
 //  ****************************************************************************
 //  
-    wire beat;
     wire generate_next_sample, generate_next_sample0;
     wire [15:0] note_sample, note_sample0;
     wire note_sample_ready, note_sample_ready0;
+
+    wire signed [15:0] sample_out_0, sample_out_1, sample_out_2, sample_out_3;
+    wire ready_0, ready_1, ready_2, ready_3;
+
+    note_player note_player_0(
+        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .note_to_load(note_0), .duration_to_load(duration_0), .harmonic_to_load(harmonic_0), .load_new_note(new_note_0),
+        .done_with_note(note_done_0), .beat(beat), .generate_next_sample(generate_next_sample),
+        .sample_out(sample_out_0), .new_sample_ready(ready_0)
+    );
+
+    note_player note_player_1(
+        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .note_to_load(note_1), .duration_to_load(duration_1), .harmonic_to_load(harmonic_1), .load_new_note(new_note_1),
+        .done_with_note(note_done_1), .beat(beat), .generate_next_sample(generate_next_sample),
+        .sample_out(sample_out_1), .new_sample_ready(ready_1)
+    );
+
+    note_player note_player_2(
+        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .note_to_load(note_2), .duration_to_load(duration_2), .harmonic_to_load(harmonic_2), .load_new_note(new_note_2),
+        .done_with_note(note_done_2), .beat(beat), .generate_next_sample(generate_next_sample),
+        .sample_out(sample_out_2), .new_sample_ready(ready_2)
+    );
+
+    note_player note_player_3(
+        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .note_to_load(note_3), .duration_to_load(duration_3), .harmonic_to_load(harmonic_3), .load_new_note(new_note_3),
+        .done_with_note(note_done_3), .beat(beat), .generate_next_sample(generate_next_sample),
+        .sample_out(sample_out_3), .new_sample_ready(ready_3)
+    );
+
+    // Audio Mixer: Add the 4 channels into an 18-bit wire to prevent overflow, 
+    // then arithmetic shift right by 2 to divide by 4.
+    wire signed [17:0] mixed_sample = sample_out_0 + sample_out_1 + sample_out_2 + sample_out_3;
+    assign note_sample0 = mixed_sample >>> 2;
+
+    // All note players run perfectly synchronously, so we only need to monitor one ready signal.
+    assign note_sample_ready0 = ready_0;
 
     // These pipeline registers were added to decrease the length of the critical path!
     dffr pipeline_ff_gen_next_sample (.clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample));
     dffr #(.WIDTH(16)) pipeline_ff_note_sample (.clk(clk), .r(reset), .d(note_sample0), .q(note_sample));
     dffr pipeline_ff_new_sample_ready (.clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready));
-
-    note_player note_player(
-        .clk(clk),
-        .reset(reset),
-        .play_enable(play),
-        .note_to_load(note_to_play),
-        .duration_to_load(duration_for_note),
-        .load_new_note(new_note),
-        .done_with_note(note_done),
-        .beat(beat),
-        .generate_next_sample(generate_next_sample),
-        .sample_out(note_sample0),
-        .new_sample_ready(note_sample_ready0)
-    );
       
 //   
 //  ****************************************************************************
