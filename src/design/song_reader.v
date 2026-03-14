@@ -110,8 +110,8 @@ module song_reader(
         
     dffre #(.WIDTH(`NUM_NOTE_PLAYERS)) in_queue_ff (
         .clk(clk),
-        .r(reset | opcode),    // "flush" when opcode = 1
-        .en(!opcode & (state == `DECODE)),          // store values when opcode = 0
+        .r(reset | (state == `WAIT)), // Reset when chord starts playing
+        .en(!opcode & (state == `DECODE) & (sel_current != 0)),
         .d(sel_current | in_queue),
         .q(in_queue)
     );
@@ -146,10 +146,9 @@ module song_reader(
         .q({note_3, duration_3, harmonic_3})
     );
     
-    assign new_note_0 = (opcode & (state == `DECODE)) ? in_queue[0] : 0;
-    assign new_note_1 = (opcode & (state == `DECODE)) ? in_queue[1] : 0;
-    assign new_note_2 = (opcode & (state == `DECODE)) ? in_queue[2] : 0;
-    assign new_note_3 = (opcode & (state == `DECODE)) ? in_queue[3] : 0;
+    // Only fire new_note when opcode = 1
+    assign {new_note_3, new_note_2, new_note_1, new_note_0} = 
+                            (opcode && state == `DECODE) ? in_queue : 4'b0000;
  
     // wait_counter to advance time in state WAIT
     wire [`DURATION_WIDTH-1:0] wait_counter, next_wait_counter;
@@ -162,7 +161,14 @@ module song_reader(
         .q(wait_counter)
     ); 
     
-    assign next_wait_counter = (state == `DECODE) ? duration - 6'b1 : wait_counter - 6'b1;
+    // Halve the duration for Fast Forward, but ensure we never load a 0 to prevent underflow
+    wire [5:0] fast_duration = (duration > 1) ? {1'b0, duration[5:1]} : duration;
+    wire [5:0] actual_duration = (mode == 2'b11) ? fast_duration : duration;
+
+    // Use the actual_duration to load the counter
+    assign next_wait_counter = (state == `DECODE) ? actual_duration - 6'b1 : 
+                               (beat && wait_counter != 6'b0) ? wait_counter - 6'b1 : 
+                               wait_counter;
 
     always @(*) begin
         case (state)
@@ -171,7 +177,7 @@ module song_reader(
             `DECODE : next_state = !play_enable ? `PAUSED :
                                    opcode ? `WAIT : `INCREMENT_ADDRESS;
             `WAIT : next_state = !play_enable ? `PAUSED :
-                                 (wait_counter == 6'b0 && beat) ? `INCREMENT_ADDRESS : `WAIT;
+                                 (wait_counter == 6'b0) ? `INCREMENT_ADDRESS : `WAIT;
             `INCREMENT_ADDRESS : next_state = play_enable ? `FETCH : `PAUSED;                                                       
             default : next_state = `PAUSED;
         endcase

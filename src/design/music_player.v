@@ -24,7 +24,19 @@ module music_player(
 
     // Our final output sample to the codec. This needs to be synced to
     // new_frame.
-    output wire [15:0] sample_out
+    output wire [15:0] sample_out,
+    
+    // Individual note outputs for wave_display
+    output wire [15:0] sample_out_1,
+    output wire new_sample_ready_1,
+    output wire [15:0] sample_out_2,
+    output wire new_sample_ready_2,
+    output wire [15:0] sample_out_3,
+    output wire new_sample_ready_3,
+    output wire [15:0] sample_out_4,
+    output wire new_sample_ready_4
+    // -------------------------------------------------------
+    
 );
     // The BEAT_COUNT is parameterized so you can reduce this in simulation.
     // If you reduce this to 100 your simulation will be 10x faster.
@@ -90,47 +102,47 @@ module music_player(
 
 //   
 //  ****************************************************************************
-//      Note Players (x4 for Polyphony)
+//      Note Players
 //  ****************************************************************************
 //  
     wire generate_next_sample, generate_next_sample0;
     wire [15:0] note_sample, note_sample0;
     wire note_sample_ready, note_sample_ready0;
 
-    wire signed [15:0] sample_out_0, sample_out_1, sample_out_2, sample_out_3;
+    wire signed [15:0] sample_out_0_internal, sample_out_1_internal, sample_out_2_internal, sample_out_3_internal;
     wire ready_0, ready_1, ready_2, ready_3;
 
     note_player note_player_0(
-        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_0), .duration_to_load(duration_0), .harmonic_to_load(harmonic_0), .load_new_note(new_note_0),
         .done_with_note(note_done_0), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_0), .new_sample_ready(ready_0)
+        .sample_out(sample_out_0_internal), .new_sample_ready(ready_0)
     );
 
     note_player note_player_1(
-        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_1), .duration_to_load(duration_1), .harmonic_to_load(harmonic_1), .load_new_note(new_note_1),
         .done_with_note(note_done_1), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_1), .new_sample_ready(ready_1)
+        .sample_out(sample_out_1_internal), .new_sample_ready(ready_1)
     );
 
     note_player note_player_2(
-        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_2), .duration_to_load(duration_2), .harmonic_to_load(harmonic_2), .load_new_note(new_note_2),
         .done_with_note(note_done_2), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_2), .new_sample_ready(ready_2)
+        .sample_out(sample_out_2_internal), .new_sample_ready(ready_2)
     );
 
     note_player note_player_3(
-        .clk(clk), .reset(reset), .mode(mode), .play_enable(play),
+        .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_3), .duration_to_load(duration_3), .harmonic_to_load(harmonic_3), .load_new_note(new_note_3),
         .done_with_note(note_done_3), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_3), .new_sample_ready(ready_3)
+        .sample_out(sample_out_3_internal), .new_sample_ready(ready_3)
     );
 
     // Audio Mixer: Add the 4 channels into an 18-bit wire to prevent overflow, 
     // then arithmetic shift right by 2 to divide by 4.
-    wire signed [17:0] mixed_sample = sample_out_0 + sample_out_1 + sample_out_2 + sample_out_3;
+    wire signed [17:0] mixed_sample = $signed(sample_out_1) + $signed(sample_out_2) + $signed(sample_out_3) + $signed(sample_out_4);
     assign note_sample0 = mixed_sample >>> 2;
 
     // All note players run perfectly synchronously, so we only need to monitor one ready signal.
@@ -140,7 +152,21 @@ module music_player(
     dffr pipeline_ff_gen_next_sample (.clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample));
     dffr #(.WIDTH(16)) pipeline_ff_note_sample (.clk(clk), .r(reset), .d(note_sample0), .q(note_sample));
     dffr pipeline_ff_new_sample_ready (.clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready));
-      
+
+    // Pipeline flops for the individual notes to match critical path logic ---
+    dffr #(.WIDTH(16)) pipeline_ff_note_1 (.clk(clk), .r(reset), .d(sample_out_0_internal), .q(sample_out_1));
+    dffr pipeline_ff_ready_1 (.clk(clk), .r(reset), .d(ready_0), .q(new_sample_ready_1));
+
+    dffr #(.WIDTH(16)) pipeline_ff_note_2 (.clk(clk), .r(reset), .d(sample_out_1_internal), .q(sample_out_2));
+    dffr pipeline_ff_ready_2 (.clk(clk), .r(reset), .d(ready_1), .q(new_sample_ready_2));
+
+    dffr #(.WIDTH(16)) pipeline_ff_note_3 (.clk(clk), .r(reset), .d(sample_out_2_internal), .q(sample_out_3));
+    dffr pipeline_ff_ready_3 (.clk(clk), .r(reset), .d(ready_2), .q(new_sample_ready_3));
+
+    dffr #(.WIDTH(16)) pipeline_ff_note_4 (.clk(clk), .r(reset), .d(sample_out_3_internal), .q(sample_out_4));
+    dffr pipeline_ff_ready_4 (.clk(clk), .r(reset), .d(ready_3), .q(new_sample_ready_4));
+    // -----------------------------------------------------------------------------------
+       
 //   
 //  ****************************************************************************
 //      Beat Generator
@@ -163,10 +189,16 @@ module music_player(
 //  
     wire new_sample_generated0;
     wire [15:0] sample_out0; 
+    
+    wire ready_p1, ready_p2;
+    dffr pipe_r1 (.clk(clk), .r(reset), .d(generate_next_sample0), .q(ready_p1));
+    dffr pipe_r2 (.clk(clk), .r(reset), .d(ready_p1), .q(ready_p2));
 
-    dffr pipeline_ff_nsg (.clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated));
-    dffr #(.WIDTH(16)) pipeline_ff_sample_out (.clk(clk), .r(reset), .d(sample_out0), .q(sample_out));
-
+//    dffr pipeline_ff_nsg (.clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated));
+//    dffr #(.WIDTH(16)) pipeline_ff_sample_out (.clk(clk), .r(reset), .d(sample_out0), .q(sample_out));
+    assign new_sample_generated = (mode == `GENERATE) ? 1'b0 : ready_p2;
+    assign sample_out = (mode == `GENERATE) ? 16'b0 : sample_out0;
+    
     assign new_sample_generated0 = generate_next_sample;
     codec_conditioner codec_conditioner(
         .clk(clk),

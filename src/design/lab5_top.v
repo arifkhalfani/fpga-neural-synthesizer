@@ -1,22 +1,28 @@
+`define CODE_WHITE 3'd0
+`define CODE_BLUE  3'd1
+`define CODE_RED   3'd2
+`define CODE_GREEN 3'd3
+`define CODE_PINK  3'd4
+
 module lab5_top(
     /*
     'define H_SYNC_PULSE 112
-	'define H_BACK_PORCH 248
-	'define H_FRONT_PORCH 48
-	'define V_SYNC_PULSE 3
-	'define V_BACK_PORCH 38
-	'define V_FRONT_PORCH 1
-    */ 	  
+    'define H_BACK_PORCH 248
+    'define H_FRONT_PORCH 48
+    'define V_SYNC_PULSE 3
+    'define V_BACK_PORCH 38
+    'define V_FRONT_PORCH 1
+    */     
 
     // System Clock (125MHz)
     input sysclk,
-    	 
+        
     // ADAU_1761 interface
     output  AC_ADR0,            // I2C Address pin (DO NOT CHANGE)
     output  AC_ADR1,            // I2C Address pin (DO NOT CHANGE)
     
     output  AC_DOUT,           // I2S Signals
-    input   AC_DIN,           // I2S Signals
+    input   AC_DIN,            // I2S Signals
     input   AC_BCLK,           // I2S Byte Clock
     input   AC_WCLK,           // I2S Channel Clock
     
@@ -31,8 +37,7 @@ module lab5_top(
 
     input [3:0] btn,
 
-    /* 
-    //VGA OUTPUT 
+    /* //VGA OUTPUT 
     output [3:0] VGA_R,
     output [3:0] VGA_G,
     output [3:0] VGA_B,
@@ -58,8 +63,8 @@ module lab5_top(
  
     clk_wiz_0 U2 (
         .clk_out1(clk_100),     // 100 MHz
-        .clk_out2(display_clk),	// 30 MHz
-        .clk_out3(serial_clk),	// 150 Mhz
+        .clk_out2(display_clk), // 30 MHz
+        .clk_out3(serial_clk),  // 150 Mhz
         .reset(reset),
         .locked(LED0),
         .clk_in1(sysclk)
@@ -118,23 +123,39 @@ module lab5_top(
         .in(mode_button),
         .out(mode)
     );
-       
+        
 //   
 //  ****************************************************************************
 //      The music player
 //  ****************************************************************************
-//       
+//        
     wire new_frame, new_frame_1;
     wire [15:0] codec_sample, flopped_sample;
     wire new_sample, flopped_new_sample;
+
+    wire [15:0] sample_out_1, sample_out_2, sample_out_3, sample_out_4;
+    wire new_sample_ready_1, new_sample_ready_2, new_sample_ready_3, new_sample_ready_4;
+    
+    wire [15:0] flopped_sample_1, flopped_sample_2, flopped_sample_3, flopped_sample_4;
+    wire flopped_new_sample_1, flopped_new_sample_2, flopped_new_sample_3, flopped_new_sample_4;
+
     music_player #(.BEAT_COUNT(BEAT_COUNT)) music_player(
         .clk(clk_100),
         .reset(reset),
         .play_button(play),
         .next_button(next),
+        .mode_button(mode),
         .new_frame(new_frame_1), 
         .sample_out(codec_sample),
-        .new_sample_generated(new_sample)
+        .new_sample_generated(new_sample),
+        .sample_out_1(sample_out_1),
+        .new_sample_ready_1(new_sample_ready_1),
+        .sample_out_2(sample_out_2),
+        .new_sample_ready_2(new_sample_ready_2),
+        .sample_out_3(sample_out_3),
+        .new_sample_ready_3(new_sample_ready_3),
+        .sample_out_4(sample_out_4),
+        .new_sample_ready_4(new_sample_ready_4)
     );
     
     dffr abc_dff(
@@ -150,6 +171,27 @@ module lab5_top(
         .q({flopped_new_sample, flopped_sample})
     );
 
+    dff #(.WIDTH(17)) sample_reg_1 (
+        .clk(clk_100),
+        .d({new_sample_ready_1, sample_out_1}),
+        .q({flopped_new_sample_1, flopped_sample_1})
+    );
+    dff #(.WIDTH(17)) sample_reg_2 (
+        .clk(clk_100),
+        .d({new_sample_ready_2, sample_out_2}),
+        .q({flopped_new_sample_2, flopped_sample_2})
+    );
+    dff #(.WIDTH(17)) sample_reg_3 (
+        .clk(clk_100),
+        .d({new_sample_ready_3, sample_out_3}),
+        .q({flopped_new_sample_3, flopped_sample_3})
+    );
+    dff #(.WIDTH(17)) sample_reg_4 (
+        .clk(clk_100),
+        .d({new_sample_ready_4, sample_out_4}),
+        .q({flopped_new_sample_4, flopped_sample_4})
+    );
+
 //   
 //  ****************************************************************************
 //      Codec interface
@@ -157,8 +199,8 @@ module lab5_top(
 //  
     wire [23:0] hphone_r = 0;
     wire [23:0] line_in_l = 0;  
-	wire [23:0] line_in_r =  0; 
-	
+    wire [23:0] line_in_r =  0; 
+    
     // Output the sample onto the LEDs for the fun of it.
     assign leds_rgb_0 = codec_sample[15:13];
     assign leds_rgb_1 = codec_sample[11:9];
@@ -192,8 +234,8 @@ module lab5_top(
     //==========================================================================
     // Display management -> do not touch!
     //==========================================================================
-	 
-//	wire valid, de;
+    
+//  wire valid, de;
 //    vga_generator vga_g (
 //        .clk(clk_100),
 //        .r(r), 
@@ -220,23 +262,113 @@ module lab5_top(
         .blank(blank)
     );
     
-    
-    
+    wire [7:0] r_0, g_0, b_0; 
+    wire [7:0] rw_1, gw_1, bw_1; 
+    wire [7:0] rw_2, gw_2, bw_2; 
+    wire [7:0] rw_3, gw_3, bw_3; 
+    wire [7:0] rw_4, gw_4, bw_4; 
     
     wave_display_top wd_top (
-		.clk (clk_100),
-		.reset (reset),
-		.new_sample (new_sample),
-		.sample (flopped_sample),
+        .clk (clk_100),
+        .reset (reset),
+        .new_sample (flopped_new_sample),
+        .sample (flopped_sample),
         .x(x[10:0]),
         .y(y[9:0]),
         //.valid(valid),
-		.valid(vde),
-		.vsync(vsync),
-		.r(r_1),
-		.g(g_1),
-		.b(b_1)
+        .valid(vde),
+        .vsync(vsync),
+        .color_code(`CODE_WHITE),
+        .r(r_0),
+        .g(g_0),
+        .b(b_0)
     );
+    
+    wave_display_top wd_top_1 (
+        .clk (clk_100),
+        .reset (reset),
+        .new_sample (flopped_new_sample_1),
+        .sample (flopped_sample_1),
+        .x(x[10:0]),
+        .y(y[9:0]),
+        .valid(vde),
+        .vsync(vsync),
+        .color_code(`CODE_BLUE),
+        .r(rw_1),
+        .g(gw_1),
+        .b(bw_1)
+    );
+
+    wave_display_top wd_top_2 (
+        .clk (clk_100),
+        .reset (reset),
+        .new_sample (flopped_new_sample_2),
+        .sample (flopped_sample_2),
+        .x(x[10:0]),
+        .y(y[9:0]),
+        .valid(vde),
+        .vsync(vsync),
+        .color_code(`CODE_RED),
+        .r(rw_2),
+        .g(gw_2),
+        .b(bw_2)
+    );
+
+    wave_display_top wd_top_3 (
+        .clk (clk_100),
+        .reset (reset),
+        .new_sample (flopped_new_sample_3),
+        .sample (flopped_sample_3),
+        .x(x[10:0]),
+        .y(y[9:0]),
+        .valid(vde),
+        .vsync(vsync),
+        .color_code(`CODE_GREEN),
+        .r(rw_3),
+        .g(gw_3),
+        .b(bw_3)
+    );
+
+    wave_display_top wd_top_4 (
+        .clk (clk_100),
+        .reset (reset),
+        .new_sample (flopped_new_sample_4),
+        .sample (flopped_sample_4),
+        .x(x[10:0]),
+        .y(y[9:0]),
+        .valid(vde),
+        .vsync(vsync),
+        .color_code(`CODE_PINK),
+        .r(rw_4),
+        .g(gw_4),
+        .b(bw_4)
+    );
+
+    // Determine which waves are actively drawing a pixel at this x,y coordinate
+    wire wave0_active = (r_0 | g_0 | b_0) != 0; // The overall mix (White)
+    wire wave1_active = (rw_1 | gw_1 | bw_1) != 0;
+    wire wave2_active = (rw_2 | gw_2 | bw_2) != 0;
+    wire wave3_active = (rw_3 | gw_3 | bw_3) != 0;
+    wire wave4_active = (rw_4 | gw_4 | bw_4) != 0;
+
+    // Priority Mux: Draw Wave 0 on top, then Wave 1, etc. No additive mixing!
+    assign r_1 = wave0_active ? r_0 :
+                 wave1_active ? rw_1 :
+                 wave2_active ? rw_2 :
+                 wave3_active ? rw_3 :
+                 wave4_active ? rw_4 : 8'd0;
+
+    assign g_1 = wave0_active ? g_0 :
+                 wave1_active ? gw_1 :
+                 wave2_active ? gw_2 :
+                 wave3_active ? gw_3 :
+                 wave4_active ? gw_4 : 8'd0;
+
+    assign b_1 = wave0_active ? b_0 :
+                 wave1_active ? bw_1 :
+                 wave2_active ? bw_2 :
+                 wave3_active ? bw_3 :
+                 wave4_active ? bw_4 : 8'd0;
     
     assign r = r_1[7:4];
     assign g = g_1[7:4];
@@ -265,4 +397,3 @@ module lab5_top(
    
    
 endmodule
-

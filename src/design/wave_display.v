@@ -1,3 +1,9 @@
+`define WHITE 24'hFFFFFF
+`define BLUE  24'h0000FF
+`define RED   24'hFF0000
+`define GREEN 24'h00FF00
+`define PINK  24'hFF00FF
+
 module wave_display (
     input clk,
     input reset,
@@ -6,6 +12,7 @@ module wave_display (
     input valid,
     input [7:0] read_value,
     input read_index,
+    input [2:0] color_code,
     output wire [8:0] read_address,
     output wire valid_pixel,
     output wire [7:0] r,
@@ -58,10 +65,23 @@ module wave_display (
         else
             display = 0;
     end
+    
+    // Select the color based on the color_code input
+    reg [23:0] selected_color;
+    always @(*) begin
+        case(color_code)
+            3'd0: selected_color = `WHITE;
+            3'd1: selected_color = `BLUE;
+            3'd2: selected_color = `RED;
+            3'd3: selected_color = `GREEN;
+            3'd4: selected_color = `PINK;
+            default: selected_color = `WHITE;
+        endcase
+    end
 
     // Only valid if coordinates are valid, the input from VGA is valid, and we should display
     // a pixel at the given (x, y) coordinate
     assign valid_pixel = valid & valid_x & valid_y & display;
-    assign {r, g, b} = valid_pixel ? 24'hFFFFFF : 24'h000000;
+    assign {r, g, b} = valid_pixel ? selected_color : 24'h000000;
 
 endmodule

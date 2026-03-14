@@ -16,8 +16,8 @@ module note_player(
     output done_with_note,          // When we are done with the note this stays high.
     input beat,                     // This is our 1/48th second beat
     input generate_next_sample,     // Tells us when the codec wants a new sample
-    output [15:0] sample_out,       // Our sample output
-    output new_sample_ready         // Tells the codec when we've got a sample
+    output [15:0] sample_out,       // Our sample output (NOW DRIVEN BY FLOP)
+    output new_sample_ready         // Tells the codec when we've got a sample (NOW DRIVEN BY FLOP)
 );
 
     wire [19:0] step_size;
@@ -58,9 +58,6 @@ module note_player(
     wire signed [15:0] s1, s2, s3, s4;
     wire ready_1, ready_2, ready_3, ready_4; 
     
-    // We only need one ready signal since they all run perfectly in parallel
-    assign new_sample_ready = ready_1; 
-
     sine_reader sr1(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_1), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_1), .sample(s1));
     sine_reader sr2(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_2), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_2), .sample(s2));
     sine_reader sr3(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_3), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_3), .sample(s3));
@@ -69,29 +66,59 @@ module note_player(
     // Weight mux (fixed point scale: 2^14 = 16384 = 1.0)
     reg signed [16:0] w1, w2, w3, w4; 
     
+    // Normalized weight mux: The sum of w1+w2+w3+w4 <= 16384
     always @(*) begin
         case(current_harmonic)
-            3'd1: begin w1=16384; w2=4096;  w3=819;   w4=0;    end // Flute (sine-like)
-            3'd2: begin w1=16384; w2=0;     w3=5461;  w4=0;    end // Clarinet (odd harmonics)
-            3'd3: begin w1=16384; w2=8192;  w3=5461;  w4=4096; end // Brass (sawtooth)
-            3'd4: begin w1=16384; w2=8192;  w3=2048;  w4=0;    end // Tonewheel Organ
-            3'd5: begin w1=8192;  w2=16384; w3=12288; w4=4096; end // Oboe (dominant 2nd/3rd)
-            3'd6: begin w1=16384; w2=0;     w3=0;     w4=2048; end // Vibraphone
-            3'd7: begin w1=8192;  w2=8192;  w3=8192;  w4=8192; end // Harpsichord (pulse)
-            default: begin w1=16384; w2=0; w3=0; w4=0; end         // Zeroth type and default to pure sine
+            3'd1: begin w1=11000; w2=3500;  w3=1884;  w4=0;    end // Flute (sine-like)
+            3'd2: begin w1=10000; w2=0;     w3=6384;  w4=0;    end // Clarinet (odd harmonics)
+            3'd3: begin w1=8000;  w2=4000;  w3=2500;  w4=1884; end // Brass (sawtooth)
+            3'd4: begin w1=10000; w2=5000;  w3=1384;  w4=0;    end // Tonewheel Organ
+            3'd5: begin w1=4000;  w2=8000;  w3=4384;  w4=0;    end // Oboe (dominant 2nd/3rd)
+            3'd6: begin w1=14000; w2=0;     w3=0;     w4=2384; end // Vibraphone
+            3'd7: begin w1=4096;  w2=4096;  w3=4096;  w4=4096; end // Harpsichord (pulse)
+            default: begin w1=16384; w2=0; w3=0; w4=0; end         // Pure sine
         endcase
     end
 
-    // Multiply and accumulate (dot product)
-    wire signed [31:0] mix1 = s1 * w1;
-    wire signed [31:0] mix2 = s2 * w2;
-    wire signed [31:0] mix3 = s3 * w3;
-    wire signed [31:0] mix4 = s4 * w4;
+    // Multiply (combinational)
+    wire signed [31:0] mix1_comb = s1 * w1;
+    wire signed [31:0] mix2_comb = s2 * w2;
+    wire signed [31:0] mix3_comb = s3 * w3;
+    wire signed [31:0] mix4_comb = s4 * w4;
 
+    // Pipeline the multipliers before the adder tree
+    wire signed [31:0] mix1, mix2, mix3, mix4;
+    dffr #(.WIDTH(32)) pipe_mix1 (.clk(clk), .r(reset), .d(mix1_comb), .q(mix1));
+    dffr #(.WIDTH(32)) pipe_mix2 (.clk(clk), .r(reset), .d(mix2_comb), .q(mix2));
+    dffr #(.WIDTH(32)) pipe_mix3 (.clk(clk), .r(reset), .d(mix3_comb), .q(mix3));
+    dffr #(.WIDTH(32)) pipe_mix4 (.clk(clk), .r(reset), .d(mix4_comb), .q(mix4));
+
+    // Pipeline the ready signal so it stays in sync with the new 1-cycle delay
+    wire ready_delayed;
+    dffr pipe_ready (.clk(clk), .r(reset), .d(ready_1), .q(ready_delayed));
+
+    // Add the pipelined values together
     wire signed [31:0] mix_sum = mix1 + mix2 + mix3 + mix4;
-
-    // Shift right by 14 to normalize back to 16-bit audio ranges
-    assign sample_out = mix_sum >>> 14;
+    
+    // Shift right by 14 to normalize back to 16-bit audio ranges, 
+    // but force the output to zero if the note is done or we are in GENERATE.
+    wire signed [15:0] internal_sample_out = (done_with_note || mode == `GENERATE) ? 16'b0 : (mix_sum >>> 14);
+    
+    // Flop the final calculated sample
+    dffr #(.WIDTH(16)) pipeline_sample (
+        .clk(clk),
+        .r(reset),
+        .d(internal_sample_out),
+        .q(sample_out)
+    );
+    
+    // Flop the ready signal to keep it in sync with the delayed sample
+    dffr pipeline_ready_final (
+        .clk(clk),
+        .r(reset),
+        .d(ready_delayed),
+        .q(new_sample_ready)
+    );
 
     // Standard count / duration logic
     wire [5:0] count, next_count;

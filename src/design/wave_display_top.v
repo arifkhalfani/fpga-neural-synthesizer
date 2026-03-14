@@ -1,3 +1,9 @@
+`define WHITE 24'hFFFFFF
+`define BLUE  24'h0000FF
+`define RED   24'hFF0000
+`define GREEN 24'h00FF00
+`define PINK  24'hFF00FF
+
 module wave_display_top(
     input clk,
     input reset,
@@ -7,6 +13,7 @@ module wave_display_top(
     input [9:0]  y,  // [0..1023]     
     input valid,
     input vsync,
+    input [2:0] color_code, // Accepts the color code from lab5_top
     output [7:0] r,
     output [7:0] g,
     output [7:0] b
@@ -42,7 +49,6 @@ module wave_display_top(
     );
  
     wire valid_pixel;
-    wire [7:0] wd_r, wd_g, wd_b;
     wave_display wd(
         .clk(clk),
         .reset(reset),
@@ -52,10 +58,11 @@ module wave_display_top(
         .read_address(read_address),
         .read_value(read_sample),
         .read_index(read_index),
+        .color_code(color_code),
         .valid_pixel(valid_pixel),
-        .r(wd_r), .g(wd_g), .b(wd_b)
+        .r(r), 
+        .g(g), 
+        .b(b)
     );
-
-    assign {r, g, b} = valid_pixel ? {wd_r, wd_g, wd_b} : {3{8'b0}};
 
 endmodule
