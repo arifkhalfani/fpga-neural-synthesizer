@@ -1,6 +1,13 @@
+`define MODE_WIDTH 2
+`define NORMAL 2'b00
+`define REWIND 2'b01
+`define FAST_FORWARD 2'b11
+`define GENERATE 2'b10
+
 module note_player_tb();
 
     reg clk, reset, play_enable, generate_next_sample;
+    reg [1:0] mode;
     reg [5:0] note_to_load;
     reg [5:0] duration_to_load;
     reg load_new_note;
@@ -13,6 +20,7 @@ module note_player_tb();
     note_player np(
         .clk(clk),
         .reset(reset),
+        .mode(mode),
 
         .play_enable(play_enable),
         .note_to_load(note_to_load),
@@ -44,6 +52,7 @@ module note_player_tb();
 
     // Tests
     initial begin
+        mode = `NORMAL;
         play_enable = 0;
         generate_next_sample = 1;
         load_new_note = 0;
@@ -75,7 +84,7 @@ module note_player_tb();
             $display ("Error at test 1");
         end
 
-        // 2. play/pause functionality
+        // 2&3. play/pause functionality
         note_to_load = 6'd55;
         duration_to_load = 6'd5;    // finish in 20 cycles
         load_new_note = 1;
@@ -107,6 +116,60 @@ module note_player_tb();
         if (expected_done !== done_with_note) begin
             errors = 1'b1;
             $display ("Error at test 3");
+        end
+
+        // 4. FAST_FORWARD: load note 35 with duration 5
+        // at STOP=4, this note should take roughly half the cycles to finish (12 cycles)
+        mode = `FAST_FORWARD;
+        note_to_load = 6'd35;
+        duration_to_load = 6'd5;
+        load_new_note = 1;
+        #10; 
+        load_new_note = 0;
+        play_enable = 1;
+
+        #110; // ~11 cycles (beat mismatch)
+        
+        expected_done = 1;
+        
+        $display ("done_with_note = %d, expected = %d", done_with_note, expected_done);
+        if (expected_done !== done_with_note) begin
+            errors = 1'b1;
+            $display ("Error at test 4");
+        end
+
+        // 5&6. FAST_FORWARD play/pause functionality
+        note_to_load = 6'd55;
+        duration_to_load = 6'd5;    // finish in ~12 cycles
+        load_new_note = 1;
+        #10;
+        load_new_note = 0;
+        
+        #50;
+        play_enable = 0; // pause
+        #100;
+        
+        // if truly paused, the note wouldn't end
+        expected_done = 0;
+        
+        $display ("done_with_note = %d, expected = %d", done_with_note, expected_done);
+        if (expected_done !== done_with_note) begin
+            errors = 1'b1;
+            $display ("Error at test 5");
+        end
+        
+        
+        play_enable = 1; // resume
+        
+        #70;
+        
+        // note ends at roughly 12th cycle
+        expected_done = 1;
+        
+        $display ("done_with_note = %d, expected = %d", done_with_note, expected_done);
+        if (expected_done !== done_with_note) begin
+            errors = 1'b1;
+            $display ("Error at test 6");
         end
 
         if (errors == 1'b0) begin

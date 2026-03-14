@@ -1,5 +1,5 @@
 module music_player_tb();
-    reg clk, reset, next_button, play_button;
+    reg clk, reset, next_button, play_button, mode_button;
     wire new_frame;
     wire [15:0] sample;
 
@@ -8,6 +8,7 @@ module music_player_tb();
         .reset(reset),
         .next_button(next_button),
         .play_button(play_button),
+        .mode_button(mode_button),
         .new_frame(new_frame),
         .sample_out(sample)
     );
@@ -49,6 +50,7 @@ module music_player_tb();
         delay = 2000000;
         play_button = 1'b0;
         next_button = 1'b0;
+        mode_button = 1'b0;
         @(negedge reset);
         @(negedge clk);
 
