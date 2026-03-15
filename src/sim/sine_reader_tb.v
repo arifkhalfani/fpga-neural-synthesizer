@@ -1,3 +1,10 @@
+// Mode definitions
+`define MODE_WIDTH 2
+`define NORMAL 2'b00
+`define REWIND 2'b01
+`define FAST_FORWARD 2'b11
+`define GENERATE 2'b10
+
 module sine_reader_tb();
 
     reg clk, reset, generate_next;
@@ -155,7 +162,7 @@ module sine_reader_tb();
         end
         $display();
 
-$display("10. test FAST_FORWARD functionality: double speed step");
+        $display("10. test FAST_FORWARD functionality: double speed step");
         mode = `FAST_FORWARD;
         generate_next = 1;
         expected_addr = 10'd889; 
@@ -188,6 +195,7 @@ $display("10. test FAST_FORWARD functionality: double speed step");
             $display ("No errors!");
         end
         
+        $finish;
     end
     
 endmodule

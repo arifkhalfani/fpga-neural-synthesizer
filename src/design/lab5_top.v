@@ -351,7 +351,7 @@ module lab5_top(
     wire wave3_active = (rw_3 | gw_3 | bw_3) != 0;
     wire wave4_active = (rw_4 | gw_4 | bw_4) != 0;
 
-    // Priority Mux: Draw Wave 0 on top, then Wave 1, etc. No additive mixing!
+    // Priority mux: draw wave 0 on top, then wave 1, and so on
     assign r_1 = wave0_active ? r_0 :
                  wave1_active ? rw_1 :
                  wave2_active ? rw_2 :

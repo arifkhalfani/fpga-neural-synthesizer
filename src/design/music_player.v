@@ -145,15 +145,14 @@ module music_player(
     wire signed [17:0] mixed_sample = $signed(sample_out_1) + $signed(sample_out_2) + $signed(sample_out_3) + $signed(sample_out_4);
     assign note_sample0 = mixed_sample >>> 2;
 
-    // All note players run perfectly synchronously, so we only need to monitor one ready signal.
-    assign note_sample_ready0 = ready_0;
+    assign note_sample_ready0 = ready_0 | ready_1 | ready_2 | ready_3;
 
     // These pipeline registers were added to decrease the length of the critical path!
     dffr pipeline_ff_gen_next_sample (.clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample));
     dffr #(.WIDTH(16)) pipeline_ff_note_sample (.clk(clk), .r(reset), .d(note_sample0), .q(note_sample));
     dffr pipeline_ff_new_sample_ready (.clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready));
 
-    // Pipeline flops for the individual notes to match critical path logic ---
+    // Pipeline flops for the individual notes to match critical path logic
     dffr #(.WIDTH(16)) pipeline_ff_note_1 (.clk(clk), .r(reset), .d(sample_out_0_internal), .q(sample_out_1));
     dffr pipeline_ff_ready_1 (.clk(clk), .r(reset), .d(ready_0), .q(new_sample_ready_1));
 
@@ -165,7 +164,7 @@ module music_player(
 
     dffr #(.WIDTH(16)) pipeline_ff_note_4 (.clk(clk), .r(reset), .d(sample_out_3_internal), .q(sample_out_4));
     dffr pipeline_ff_ready_4 (.clk(clk), .r(reset), .d(ready_3), .q(new_sample_ready_4));
-    // -----------------------------------------------------------------------------------
+    
        
 //   
 //  ****************************************************************************

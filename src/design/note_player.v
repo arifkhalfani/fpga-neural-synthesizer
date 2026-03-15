@@ -57,11 +57,18 @@ module note_player(
     // 4 Sine Readers
     wire signed [15:0] s1, s2, s3, s4;
     wire ready_1, ready_2, ready_3, ready_4; 
-    
+   
     sine_reader sr1(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_1), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_1), .sample(s1));
     sine_reader sr2(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_2), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_2), .sample(s2));
     sine_reader sr3(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_3), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_3), .sample(s3));
     sine_reader sr4(.clk(clk), .reset(reset), .mode(mode), .step_size(step_size_4), .generate_next(play_enable && generate_next_sample), .sample_ready(ready_4), .sample(s4));
+
+    // Break the critical path by flopping the ROM outputs before the multipliers
+    wire signed [15:0] s1_reg, s2_reg, s3_reg, s4_reg;
+    dffr #(.WIDTH(16)) pipe_s1 (.clk(clk), .r(reset), .d(s1), .q(s1_reg));
+    dffr #(.WIDTH(16)) pipe_s2 (.clk(clk), .r(reset), .d(s2), .q(s2_reg));
+    dffr #(.WIDTH(16)) pipe_s3 (.clk(clk), .r(reset), .d(s3), .q(s3_reg));
+    dffr #(.WIDTH(16)) pipe_s4 (.clk(clk), .r(reset), .d(s4), .q(s4_reg));
 
     // Weight mux (fixed point scale: 2^14 = 16384 = 1.0)
     reg signed [16:0] w1, w2, w3, w4; 
@@ -81,10 +88,10 @@ module note_player(
     end
 
     // Multiply (combinational)
-    wire signed [31:0] mix1_comb = s1 * w1;
-    wire signed [31:0] mix2_comb = s2 * w2;
-    wire signed [31:0] mix3_comb = s3 * w3;
-    wire signed [31:0] mix4_comb = s4 * w4;
+    wire signed [31:0] mix1_comb = s1_reg * w1;
+    wire signed [31:0] mix2_comb = s2_reg * w2;
+    wire signed [31:0] mix3_comb = s3_reg * w3;
+    wire signed [31:0] mix4_comb = s4_reg * w4;
 
     // Pipeline the multipliers before the adder tree
     wire signed [31:0] mix1, mix2, mix3, mix4;
@@ -94,9 +101,9 @@ module note_player(
     dffr #(.WIDTH(32)) pipe_mix4 (.clk(clk), .r(reset), .d(mix4_comb), .q(mix4));
 
     // Pipeline the ready signal so it stays in sync with the new 1-cycle delay
-    wire ready_delayed;
-    dffr pipe_ready (.clk(clk), .r(reset), .d(ready_1), .q(ready_delayed));
-
+    wire ready_delayed_1, ready_delayed_2;
+    dffr pipe_ready_1 (.clk(clk), .r(reset), .d(ready_1), .q(ready_delayed_1));
+    dffr pipe_ready_2 (.clk(clk), .r(reset), .d(ready_delayed_1), .q(ready_delayed_2));
     // Add the pipelined values together
     wire signed [31:0] mix_sum = mix1 + mix2 + mix3 + mix4;
     
@@ -116,7 +123,7 @@ module note_player(
     dffr pipeline_ready_final (
         .clk(clk),
         .r(reset),
-        .d(ready_delayed),
+        .d(ready_delayed_2), // doubly-delayed ready signal
         .q(new_sample_ready)
     );
 
