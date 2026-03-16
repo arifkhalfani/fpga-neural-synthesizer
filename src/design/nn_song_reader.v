@@ -20,16 +20,17 @@ module nn_song_reader (
     // Force default instrument type
     assign np_harmonic = 2'd0;       
 
-    // Initial Mario Seed
-    localparam [95:0] MARIO_SEED = {
-        12'b001100_100011,  // note 8: (35,12) [Newest]
-        12'b001100_100001,  // note 7: (33,12)
-        12'b001100_011110,  // note 6: (30,12)
-        12'b001100_011100,  // note 5: (28,12)
-        12'b001100_011110,  // note 4: (30,12)
-        12'b001100_100001,  // note 3: (33,12)
-        12'b001100_011111,  // note 2: (31,12)
-        12'b001100_100011   // note 1: (35,12) [Oldest]
+    // A slow, calm C-Major Arpeggio (C4, E4, G4, C5)
+    // Note encoding: C4=40, E4=44, G4=47, C5=52. Durations=24.
+    localparam [95:0] CALM_SEED = {
+        12'b011000_101000,  // [95:84] Note 1 (Oldest): C4 (40)
+        12'b011000_101100,  // [83:72] Note 2         : E4 (44)
+        12'b011000_101111,  // [71:60] Note 3         : G4 (47)
+        12'b011000_110100,  // [59:48] Note 4         : C5 (52)
+        12'b011000_101111,  // [47:36] Note 5         : G4 (47)
+        12'b011000_101100,  // [35:24] Note 6         : E4 (44)
+        12'b011000_101000,  // [23:12] Note 7         : C4 (40)
+        12'b011000_100011   // [11:0]  Note 8 (Newest): G3 (35)
     };
 
     localparam S_IDLE     = 2'd0;
@@ -60,6 +61,10 @@ module nn_song_reader (
             default: seed_note = 12'd0;
         endcase
     end
+    
+    // Useful for preventing sound popping, check lines ~126
+    reg [5:0] safe_dur;
+    reg [11:0] safe_note;
 
     always @(posedge clk) begin
         if (reset) begin
@@ -68,7 +73,7 @@ module nn_song_reader (
             duration_timer <= 6'd0;
             nn_start       <= 1'b0;
             np_play        <= 1'b0;
-            nn_ctxt        <= MARIO_SEED;
+            nn_ctxt        <= CALM_SEED;
             nn_is_ready    <= 1'b0;
             np_note        <= 6'd0;
             np_duration    <= 6'd0;  
@@ -104,8 +109,12 @@ module nn_song_reader (
                         // Play one of the 8 historical notes
                         np_play        <= 1'b1;
                         np_note        <= seed_note[5:0];
-                        np_duration    <= seed_note[11:6]; 
-                        duration_timer <= seed_note[11:6];
+                        
+                        // Force note_player to run forever so it never drops to 0
+                        np_duration    <= 6'd63;
+                        
+                        // Internal FSM tracks the real duration
+                        duration_timer <= (seed_note[11:6] == 0) ? 6'd1 : seed_note[11:6];
 
                         // If we are playing the 8th note, start the NN in the background
                         if (play_count == 7) begin
@@ -117,13 +126,21 @@ module nn_song_reader (
                     end else begin
                         // Play a newly generated note
                         if (nn_is_ready) begin
-                            // Shift the 96-bit context left and insert the new note
-                            nn_ctxt        <= {nn_ctxt[83:0], latched_nn_note};
+                            
+                            safe_dur  = (latched_nn_note[11:6] == 0) ? 6'd1 : latched_nn_note[11:6];
+                            safe_note = {safe_dur, latched_nn_note[5:0]};
+                            
+                            // Shift the safe note into the MSB (Newest)
+                            nn_ctxt        <= {safe_note, nn_ctxt[95:12]};
                             
                             np_play        <= 1'b1;
-                            np_note        <= latched_nn_note[5:0];
-                            np_duration    <= latched_nn_note[11:6]; // UPDATED
-                            duration_timer <= latched_nn_note[11:6];
+                            np_note        <= safe_note[5:0];
+
+                            // Force note_player to run forever so it never drops to 0
+                            np_duration    <= 6'd63;
+                        
+                            // Internal FSM tracks the real duration
+                            duration_timer <= safe_dur;
 
                             // Start generating the NEXT note for the next cycle
                             nn_start       <= 1'b1;
@@ -136,7 +153,8 @@ module nn_song_reader (
                 end
 
                 S_WAIT_DUR: begin
-                    if (duration_timer == 0) begin
+                    // Catch the note one cycle before it ends
+                    if ((duration_timer == 1 && beat) || duration_timer == 0) begin
                         if (play_count < 8) begin
                             play_count <= play_count + 1;
                         end

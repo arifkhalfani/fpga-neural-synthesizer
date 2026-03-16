@@ -128,7 +128,7 @@ module music_player(
     // Only enable the NN reader when in GENERATE mode AND the MCU says 'play'
     wire nn_enable = (mode == `GENERATE) && play;
 
-    nn_song_reader nn_reader_inst (
+    nn_song_reader nn_reader (
         .clk(clk),
         .reset(reset),
         .enable(nn_enable),
