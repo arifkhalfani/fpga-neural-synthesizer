@@ -102,6 +102,49 @@ module music_player(
 
 //   
 //  ****************************************************************************
+//      Neural Network & Generative Song Reader
+//  ****************************************************************************
+//
+    wire        nn_start;
+    wire [95:0] nn_ctxt;
+    wire [11:0] nn_new_note;
+    wire        nn_done;
+    
+    wire        nn_np_play;
+    wire [5:0]  nn_np_note;
+    wire [5:0]  nn_np_dur;
+    wire [1:0]  nn_np_harmonic;
+    wire        nn_note_done;
+
+    neural_net nn_inst (
+        .clk(clk),
+        .reset(reset),
+        .start(nn_start),
+        .ctxt(nn_ctxt),
+        .new_note(nn_new_note),
+        .nn_done(nn_done)
+    );
+
+    // Only enable the NN reader when in GENERATE mode AND the MCU says 'play'
+    wire nn_enable = (mode == `GENERATE) && play;
+
+    nn_song_reader nn_reader_inst (
+        .clk(clk),
+        .reset(reset),
+        .enable(nn_enable),
+        .beat(beat),
+        .nn_start(nn_start),
+        .nn_ctxt(nn_ctxt),
+        .nn_new_note(nn_new_note),
+        .nn_done(nn_done),
+        .np_play(nn_np_play),
+        .np_note(nn_np_note),
+        .np_duration(nn_np_dur),
+        .np_harmonic(nn_np_harmonic)
+    );
+
+//   
+//  ****************************************************************************
 //      Note Players
 //  ****************************************************************************
 //  
@@ -140,12 +183,24 @@ module music_player(
         .sample_out(sample_out_3_internal), .new_sample_ready(ready_3)
     );
 
+    // 5th Note Player dedicated to Neural Network output
+    wire signed [15:0] nn_sample_out_internal;
+    wire nn_ready;
+
+    note_player nn_note_player_inst(
+        .clk(clk), .reset(reset), .mode(`NORMAL), .play_enable(nn_enable),
+        .note_to_load(nn_np_note), .duration_to_load(nn_np_dur), .harmonic_to_load(nn_np_harmonic), .load_new_note(nn_np_play),
+        .done_with_note(nn_note_done), .beat(beat), .generate_next_sample(generate_next_sample),
+        .sample_out(nn_sample_out_internal), .new_sample_ready(nn_ready)
+    );
+
     // Audio Mixer: Add the 4 channels into an 18-bit wire to prevent overflow, 
     // then arithmetic shift right by 2 to divide by 4.
     wire signed [17:0] mixed_sample = $signed(sample_out_1) + $signed(sample_out_2) + $signed(sample_out_3) + $signed(sample_out_4);
-    assign note_sample0 = mixed_sample >>> 2;
-
-    assign note_sample_ready0 = ready_0 | ready_1 | ready_2 | ready_3;
+    
+    // MULTIPLEXER: Select Neural Network audio if in GENERATE mode, otherwise standard 4-channel mix
+    assign note_sample0       = (mode == `GENERATE) ? nn_sample_out_internal : (mixed_sample >>> 2);
+    assign note_sample_ready0 = (mode == `GENERATE) ? nn_ready               : (ready_0 | ready_1 | ready_2 | ready_3);
 
     // These pipeline registers were added to decrease the length of the critical path!
     dffr pipeline_ff_gen_next_sample (.clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample));
@@ -165,7 +220,7 @@ module music_player(
     dffr #(.WIDTH(16)) pipeline_ff_note_4 (.clk(clk), .r(reset), .d(sample_out_3_internal), .q(sample_out_4));
     dffr pipeline_ff_ready_4 (.clk(clk), .r(reset), .d(ready_3), .q(new_sample_ready_4));
     
-       
+        
 //   
 //  ****************************************************************************
 //      Beat Generator
@@ -193,10 +248,9 @@ module music_player(
     dffr pipe_r1 (.clk(clk), .r(reset), .d(generate_next_sample0), .q(ready_p1));
     dffr pipe_r2 (.clk(clk), .r(reset), .d(ready_p1), .q(ready_p2));
 
-//    dffr pipeline_ff_nsg (.clk(clk), .r(reset), .d(new_sample_generated0), .q(new_sample_generated));
-//    dffr #(.WIDTH(16)) pipeline_ff_sample_out (.clk(clk), .r(reset), .d(sample_out0), .q(sample_out));
-    assign new_sample_generated = (mode == `GENERATE) ? 1'b0 : ready_p2;
-    assign sample_out = (mode == `GENERATE) ? 16'b0 : sample_out0;
+    // Send the correct signals straight to the outputs regardless of mode
+    assign new_sample_generated = ready_p2;
+    assign sample_out           = sample_out0;
     
     assign new_sample_generated0 = generate_next_sample;
     codec_conditioner codec_conditioner(
