@@ -354,7 +354,6 @@ module lab5_top(
         .b(bw_4)
     );
 
-    // ---> NEW: Include is_playing in the wave active checks! 
     // Determine which waves are actively drawing a pixel at this x,y coordinate AND are currently playing
     wire wave0_active = ((r_0 | g_0 | b_0) != 0) && is_playing_0; // The overall mix (White)
     wire wave1_active = ((rw_1 | gw_1 | bw_1) != 0) && is_playing_1;

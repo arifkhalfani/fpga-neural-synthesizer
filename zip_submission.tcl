@@ -27,7 +27,7 @@ set FILES {src/design/wave_display.v \
 	lab5.runs/synth_1/lab5_top.vds}
 
 
-set archive_name "lab5_submission.tar.gz"
+set archive_name "final_project_submission.tar.gz"
 
 file delete -force $archive_name
 
