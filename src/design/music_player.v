@@ -6,6 +6,11 @@
 //  a new sample (new_sample_generated) which will be used in lab 5.
 //
 
+`define NORMAL 2'b00
+`define REWIND 2'b01
+`define FAST_FORWARD 2'b11
+`define GENERATE 2'b10
+
 module music_player(
     // Standard system clock and reset
     input clk,
@@ -25,6 +30,13 @@ module music_player(
     // Our final output sample to the codec. This needs to be synced to
     // new_frame.
     output wire [15:0] sample_out,
+    
+    // Output flags to tell the wave_display when to hide the waves
+    output wire is_playing_0, // For the main mix / NN white wave
+    output wire is_playing_1,
+    output wire is_playing_2,
+    output wire is_playing_3,
+    output wire is_playing_4,
     
     // Individual note outputs for wave_display
     output wire [15:0] sample_out_1,
@@ -154,44 +166,53 @@ module music_player(
 
     wire signed [15:0] sample_out_0_internal, sample_out_1_internal, sample_out_2_internal, sample_out_3_internal;
     wire ready_0, ready_1, ready_2, ready_3;
+    
+    // Internal playing flags
+    wire is_playing_0_internal, is_playing_1_internal, is_playing_2_internal, is_playing_3_internal;
 
     note_player note_player_0(
         .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_0), .duration_to_load(duration_0), .harmonic_to_load(harmonic_0), .load_new_note(new_note_0),
         .done_with_note(note_done_0), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_0_internal), .new_sample_ready(ready_0)
+        .sample_out(sample_out_0_internal), .new_sample_ready(ready_0),
+        .is_playing(is_playing_0_internal)
     );
 
     note_player note_player_1(
         .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_1), .duration_to_load(duration_1), .harmonic_to_load(harmonic_1), .load_new_note(new_note_1),
         .done_with_note(note_done_1), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_1_internal), .new_sample_ready(ready_1)
+        .sample_out(sample_out_1_internal), .new_sample_ready(ready_1),
+        .is_playing(is_playing_1_internal)
     );
 
     note_player note_player_2(
         .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_2), .duration_to_load(duration_2), .harmonic_to_load(harmonic_2), .load_new_note(new_note_2),
         .done_with_note(note_done_2), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_2_internal), .new_sample_ready(ready_2)
+        .sample_out(sample_out_2_internal), .new_sample_ready(ready_2),
+        .is_playing(is_playing_2_internal)
     );
 
     note_player note_player_3(
         .clk(clk), .reset(reset | reset_player), .mode(mode), .play_enable(play),
         .note_to_load(note_3), .duration_to_load(duration_3), .harmonic_to_load(harmonic_3), .load_new_note(new_note_3),
         .done_with_note(note_done_3), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(sample_out_3_internal), .new_sample_ready(ready_3)
+        .sample_out(sample_out_3_internal), .new_sample_ready(ready_3),
+        .is_playing(is_playing_3_internal)
     );
 
     // 5th Note Player dedicated to Neural Network output
     wire signed [15:0] nn_sample_out_internal;
     wire nn_ready;
+    wire nn_is_playing_internal;
 
     note_player nn_note_player_inst(
         .clk(clk), .reset(reset), .mode(`NORMAL), .play_enable(nn_enable),
         .note_to_load(nn_np_note), .duration_to_load(nn_np_dur), .harmonic_to_load(nn_np_harmonic), .load_new_note(nn_np_play),
         .done_with_note(nn_note_done), .beat(beat), .generate_next_sample(generate_next_sample),
-        .sample_out(nn_sample_out_internal), .new_sample_ready(nn_ready)
+        .sample_out(nn_sample_out_internal), .new_sample_ready(nn_ready),
+        .is_playing(nn_is_playing_internal)
     );
 
     // Audio Mixer: Add the 4 channels into an 18-bit wire to prevent overflow, 
@@ -202,23 +223,32 @@ module music_player(
     assign note_sample0       = (mode == `GENERATE) ? nn_sample_out_internal : (mixed_sample >>> 2);
     assign note_sample_ready0 = (mode == `GENERATE) ? nn_ready               : (ready_0 | ready_1 | ready_2 | ready_3);
 
+    // Flag Multiplexer: Determine if the white wave should be visible
+    wire is_playing_mix    = is_playing_0_internal | is_playing_1_internal | is_playing_2_internal | is_playing_3_internal;
+    wire is_playing_0_comb = (mode == `GENERATE) ? nn_is_playing_internal : is_playing_mix;
+
     // These pipeline registers were added to decrease the length of the critical path!
     dffr pipeline_ff_gen_next_sample (.clk(clk), .r(reset), .d(generate_next_sample0), .q(generate_next_sample));
     dffr #(.WIDTH(16)) pipeline_ff_note_sample (.clk(clk), .r(reset), .d(note_sample0), .q(note_sample));
     dffr pipeline_ff_new_sample_ready (.clk(clk), .r(reset), .d(note_sample_ready0), .q(note_sample_ready));
+    dffr pipe_play_0 (.clk(clk), .r(reset), .d(is_playing_0_comb), .q(is_playing_0));
 
     // Pipeline flops for the individual notes to match critical path logic
     dffr #(.WIDTH(16)) pipeline_ff_note_1 (.clk(clk), .r(reset), .d(sample_out_0_internal), .q(sample_out_1));
     dffr pipeline_ff_ready_1 (.clk(clk), .r(reset), .d(ready_0), .q(new_sample_ready_1));
+    dffr pipe_play_1 (.clk(clk), .r(reset), .d(is_playing_0_internal), .q(is_playing_1));
 
     dffr #(.WIDTH(16)) pipeline_ff_note_2 (.clk(clk), .r(reset), .d(sample_out_1_internal), .q(sample_out_2));
     dffr pipeline_ff_ready_2 (.clk(clk), .r(reset), .d(ready_1), .q(new_sample_ready_2));
+    dffr pipe_play_2 (.clk(clk), .r(reset), .d(is_playing_1_internal), .q(is_playing_2));
 
     dffr #(.WIDTH(16)) pipeline_ff_note_3 (.clk(clk), .r(reset), .d(sample_out_2_internal), .q(sample_out_3));
     dffr pipeline_ff_ready_3 (.clk(clk), .r(reset), .d(ready_2), .q(new_sample_ready_3));
+    dffr pipe_play_3 (.clk(clk), .r(reset), .d(is_playing_2_internal), .q(is_playing_3));
 
     dffr #(.WIDTH(16)) pipeline_ff_note_4 (.clk(clk), .r(reset), .d(sample_out_3_internal), .q(sample_out_4));
     dffr pipeline_ff_ready_4 (.clk(clk), .r(reset), .d(ready_3), .q(new_sample_ready_4));
+    dffr pipe_play_4 (.clk(clk), .r(reset), .d(is_playing_3_internal), .q(is_playing_4));
     
         
 //   

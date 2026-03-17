@@ -16,13 +16,18 @@ module note_player(
     output done_with_note,          // When we are done with the note this stays high.
     input beat,                     // This is our 1/48th second beat
     input generate_next_sample,     // Tells us when the codec wants a new sample
-    output [15:0] sample_out,       // Our sample output (NOW DRIVEN BY FLOP)
-    output new_sample_ready         // Tells the codec when we've got a sample (NOW DRIVEN BY FLOP)
+    output [15:0] sample_out,       // Our sample output
+    output new_sample_ready,        // Tells the codec when we've got a sample
+    output is_playing               // Tells wave_display to show/hide the wave
 );
 
     wire [19:0] step_size;
     wire [5:0] freq_rom_in;
     wire [2:0] current_harmonic;
+
+    // Define when the note player is actively producing sound
+    // We also force it false during GENERATE mode so the 4 colored waves hide during the NN song generation
+    assign is_playing = play_enable && !done_with_note && (mode != `GENERATE);
 
     // Register to store the base note
     dffre #(.WIDTH(6)) freq_reg (
@@ -100,16 +105,12 @@ module note_player(
     dffr #(.WIDTH(32)) pipe_mix3 (.clk(clk), .r(reset), .d(mix3_comb), .q(mix3));
     dffr #(.WIDTH(32)) pipe_mix4 (.clk(clk), .r(reset), .d(mix4_comb), .q(mix4));
 
-    // Pipeline the ready signal so it stays in sync with the new 1-cycle delay
-    wire ready_delayed_1, ready_delayed_2;
-    dffr pipe_ready_1 (.clk(clk), .r(reset), .d(ready_1), .q(ready_delayed_1));
-    dffr pipe_ready_2 (.clk(clk), .r(reset), .d(ready_delayed_1), .q(ready_delayed_2));
     // Add the pipelined values together
     wire signed [31:0] mix_sum = mix1 + mix2 + mix3 + mix4;
     
     // Shift right by 14 to normalize back to 16-bit audio ranges, 
     // but force the output to zero if the note is done or we are in GENERATE.
-    wire signed [15:0] internal_sample_out = (done_with_note || mode == `GENERATE) ? 16'b0 : (mix_sum >>> 14);
+    wire signed [15:0] internal_sample_out = (!is_playing) ? 16'b0 : (mix_sum >>> 14);
     
     // Flop the final calculated sample
     dffr #(.WIDTH(16)) pipeline_sample (
@@ -119,13 +120,17 @@ module note_player(
         .q(sample_out)
     );
     
-    // Flop the ready signal to keep it in sync with the delayed sample
-    dffr pipeline_ready_final (
-        .clk(clk),
+    // We perfectly match the 5-clock-cycle delay of the datapath:
+    // sine_reader(2) + pipe_s(1) + pipe_mix(1) + pipeline_sample(1) = 5 cycles.
+    // Because it runs continuously, it pushes zeros into the wave_display when idle
+    wire [4:0] ready_pipe;
+    dffr #(.WIDTH(5)) ready_delay (
+        .clk(clk), 
         .r(reset),
-        .d(ready_delayed_2), // doubly-delayed ready signal
-        .q(new_sample_ready)
+        .d({ready_pipe[3:0], generate_next_sample}),
+        .q(ready_pipe)
     );
+    assign new_sample_ready = ready_pipe[4];
 
     // Standard count / duration logic
     wire [5:0] count, next_count;

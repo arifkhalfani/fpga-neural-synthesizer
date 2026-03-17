@@ -3,8 +3,24 @@ cd [file dirname [file normalize [info script]]]
 set FILES {src/design/wave_display.v \
 	src/design/wave_capture.v \
 	src/design/wave_display_top.v \
+        src/design/music_player.v \
+        src/design/mcu.v \
+        src/design/song_reader.v \
+        src/design/nn_song_reader.v \
+        src/design/neural_net.v \
+        src/design/note_player.v \
+        src/design/lab5_top.v \
+
 	src/sim/wave_display_tb.v \
 	src/sim/wave_capture_tb.v \
+        src/sim/music_player_tb.v \
+        src/sim/mcu_tb.v \
+        src/sim/song_reader_tb.v \
+        src/sim/nn_song_reader_tb.v \
+        src/sim/neural_net_tb.v \
+        src/sim/note_player_tb.v \
+        src/sim/harmonic_tb.v \
+
 	src/lab5.xdc \
 	lab5.runs/impl_1/lab5_top.bit \
 	lab5.runs/impl_1/lab5_top_timing_summary_routed.rpt \

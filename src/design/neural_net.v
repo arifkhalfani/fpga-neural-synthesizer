@@ -69,7 +69,7 @@ module neural_net (
     wire last_output = (output_index == 4'd11);
 
     // =========================================================================
-    // PIPELINE STAGE 1: ROM Fetch Delay
+    // Pipeline Stage 1: ROM Fetch Delay
     // =========================================================================
     wire [STATE_WIDTH-1:0] st_s1;
     wire [4:0] h_idx_s1;
@@ -95,7 +95,7 @@ module neural_net (
     dffr #(32) r_ao_s1 (.clk(clk), .r(reset), .d(hidden_out[hidden_index]), .q(act_o_s1));
 
     // =========================================================================
-    // PIPELINE STAGE 2: Operand Muxing (Setup for Multiplier)
+    // Pipeline Stage 2: Operand Muxing (setup for multiplier)
     // =========================================================================
     wire signed [15:0] mult_a_next = (st_s1 == HIDDEN) ? wh_s1 : wo_s1;
     wire signed [31:0] mult_b_next = (st_s1 == HIDDEN) ? (ctxt_s1 ? 32'd1 : 32'd0) : act_o_s1;
@@ -121,7 +121,7 @@ module neural_net (
     dffr #(1)  r_lh_s2 (.clk(clk), .r(reset), .d(lh_s1), .q(lh_s2));
 
     // =========================================================================
-    // PIPELINE STAGE 3: Multiplier Execution
+    // Pipeline Stage 3: Multiplier Execution
     // =========================================================================
     wire signed [47:0] product_next = mult_a_s2 * mult_b_s2;
     
@@ -144,7 +144,7 @@ module neural_net (
     dffr #(1)  r_lh_s3 (.clk(clk), .r(reset), .d(lh_s2), .q(lh_s3));
 
     // =========================================================================
-    // STAGE 4: Accumulation & Bias (Combinational phase driving registers)
+    // Stage 4: Accumulation & Bias (Combinational phase driving registers)
     // =========================================================================
     wire signed [47:0] acc_plus_product = acc + prod_s3;
     wire signed [47:0] bias_ext = (st_s3 == HIDDEN) ? {{32{bh_s3[15]}}, bh_s3} : {{32{bo_s3[15]}}, bo_s3};
@@ -173,7 +173,7 @@ module neural_net (
                              : last_hidden                  ? output_index + 4'd1
                              :                                output_index;
 
-    // Accumulation uses Stage 3 logic so it adds precisely when the pipelined product arrives!
+    // Accumulation uses Stage 3 logic so it adds precisely when the pipelined product arrives
     assign acc_next = (st_s3 == IDLE)            ? 48'd0
                     : (st_s3 == HIDDEN && li_s3) ? 48'd0
                     : (st_s3 == HIDDEN)          ? acc_plus_product

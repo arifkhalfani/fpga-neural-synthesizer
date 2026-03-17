@@ -128,7 +128,7 @@ module lab5_top(
 //  ****************************************************************************
 //      The music player
 //  ****************************************************************************
-//        
+//         
     wire new_frame, new_frame_1;
     wire [15:0] codec_sample, flopped_sample;
     wire new_sample, flopped_new_sample;
@@ -138,6 +138,9 @@ module lab5_top(
     
     wire [15:0] flopped_sample_1, flopped_sample_2, flopped_sample_3, flopped_sample_4;
     wire flopped_new_sample_1, flopped_new_sample_2, flopped_new_sample_3, flopped_new_sample_4;
+
+    // ---> NEW: Declare the is_playing wires from the music player
+    wire is_playing_0, is_playing_1, is_playing_2, is_playing_3, is_playing_4;
 
     music_player #(.BEAT_COUNT(BEAT_COUNT)) music_player(
         .clk(clk_100),
@@ -155,7 +158,14 @@ module lab5_top(
         .sample_out_3(sample_out_3),
         .new_sample_ready_3(new_sample_ready_3),
         .sample_out_4(sample_out_4),
-        .new_sample_ready_4(new_sample_ready_4)
+        .new_sample_ready_4(new_sample_ready_4),
+        
+        // ---> NEW: Hook up the playing flags
+        .is_playing_0(is_playing_0),
+        .is_playing_1(is_playing_1),
+        .is_playing_2(is_playing_2),
+        .is_playing_3(is_playing_3),
+        .is_playing_4(is_playing_4)
     );
     
     dffr abc_dff(
@@ -344,14 +354,16 @@ module lab5_top(
         .b(bw_4)
     );
 
-    // Determine which waves are actively drawing a pixel at this x,y coordinate
-    wire wave0_active = (r_0 | g_0 | b_0) != 0; // The overall mix (White)
-    wire wave1_active = (rw_1 | gw_1 | bw_1) != 0;
-    wire wave2_active = (rw_2 | gw_2 | bw_2) != 0;
-    wire wave3_active = (rw_3 | gw_3 | bw_3) != 0;
-    wire wave4_active = (rw_4 | gw_4 | bw_4) != 0;
+    // ---> NEW: Include is_playing in the wave active checks! 
+    // Determine which waves are actively drawing a pixel at this x,y coordinate AND are currently playing
+    wire wave0_active = ((r_0 | g_0 | b_0) != 0) && is_playing_0; // The overall mix (White)
+    wire wave1_active = ((rw_1 | gw_1 | bw_1) != 0) && is_playing_1;
+    wire wave2_active = ((rw_2 | gw_2 | bw_2) != 0) && is_playing_2;
+    wire wave3_active = ((rw_3 | gw_3 | bw_3) != 0) && is_playing_3;
+    wire wave4_active = ((rw_4 | gw_4 | bw_4) != 0) && is_playing_4;
 
     // Priority mux: draw wave 0 on top, then wave 1, and so on
+    // Because waveX_active goes to 0 when idle, the mux automatically hides silent waves!
     assign r_1 = wave0_active ? r_0 :
                  wave1_active ? rw_1 :
                  wave2_active ? rw_2 :
